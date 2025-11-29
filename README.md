@@ -3,7 +3,7 @@
 A high-performance, native desktop server browser for the game **Squad**.  
 Built completely in **Rust** using `egui`.
 
-![Squad Browser Screenshot](https://via.placeholder.com/800x600?text=Screenshot+Coming+Soon)
+![Squad Browser Screenshot]((https://imgbox.com/7x4f2Y7A))
 
 ## ⚡ Features
 
