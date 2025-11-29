@@ -6,6 +6,8 @@ use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
+// --- СТРУКТУРИ ДАНИХ (API) ---
+
 #[derive(Deserialize, Debug, Clone)]
 struct ApiAttributes {
     name: String,
@@ -39,6 +41,8 @@ struct ApiResponse {
     links: Option<ApiLinks>,
 }
 
+// --- СТРУКТУРИ ДЛЯ GUI ---
+
 #[derive(Clone, Debug)]
 struct ServerItem {
     name: String,
@@ -61,12 +65,15 @@ enum Language {
     Ua,
 }
 
+// --- ЛОГІКА ДОДАТКУ ---
+
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 struct SquadApp {
     min_players: u32,
     max_players: u32,
     banned_countries: HashSet<String>,
+    filter_name: String, // НОВЕ ПОЛЕ
     filter_map: String,
     filter_mode: String,
     language: Language,
@@ -97,6 +104,7 @@ impl Default for SquadApp {
             min_players: 0,
             max_players: 100,
             banned_countries: banned,
+            filter_name: String::new(),
             filter_map: String::new(),
             filter_mode: String::new(),
             language: Language::En,
@@ -114,6 +122,7 @@ fn fetch_servers(
     min_p: u32, 
     max_p: u32, 
     banned: HashSet<String>, 
+    f_name: String, // НОВИЙ АРГУМЕНТ
     f_map: String, 
     f_mode: String, 
     override_url: String
@@ -165,7 +174,7 @@ fn fetch_servers(
                         let max_players = attr.max_players;
                         let map = attr.details.map.unwrap_or("Unknown".to_string());
                         let mode = attr.details.game_mode.unwrap_or("Unknown".to_string());
-
+                        
                         let mut skip = false;
                         if country != "UA" {
                             if banned.contains(&country) { skip = true; }
@@ -180,6 +189,9 @@ fn fetch_servers(
                         }
                         if skip { continue; }
 
+                        // НОВИЙ ФІЛЬТР
+                        if !f_name.is_empty() && !name.to_lowercase().contains(&f_name.to_lowercase()) { continue; }
+                        
                         if !f_map.is_empty() && !map.to_lowercase().contains(&f_map.to_lowercase()) { continue; }
                         if !f_mode.is_empty() && !mode.to_lowercase().contains(&f_mode.to_lowercase()) { continue; }
 
@@ -238,6 +250,8 @@ impl SquadApp {
             ("min_p", Language::Ua) => "Мін. Гравців:".to_owned(),
             ("max_p", Language::En) => "Max Players:".to_owned(),
             ("max_p", Language::Ua) => "Макс. Гравців:".to_owned(),
+            ("search_name", Language::En) => "Server Name:".to_owned(), // НОВЕ
+            ("search_name", Language::Ua) => "Назва Сервера:".to_owned(), // НОВЕ
             ("map", Language::En) => "Map Name:".to_owned(),
             ("map", Language::Ua) => "Назва Карти:".to_owned(),
             ("mode", Language::En) => "Game Mode:".to_owned(),
@@ -273,12 +287,13 @@ impl SquadApp {
         let min_p = self.min_players;
         let max_p = self.max_players;
         let banned = self.banned_countries.clone();
+        let f_name = self.filter_name.clone(); // ПЕРЕДАЄМО
         let f_map = self.filter_map.clone();
         let f_mode = self.filter_mode.clone();
         let url_arg = next_page_url.unwrap_or_default();
 
         thread::spawn(move || {
-            let result = fetch_servers(min_p, max_p, banned, f_map, f_mode, url_arg);
+            let result = fetch_servers(min_p, max_p, banned, f_name, f_map, f_mode, url_arg);
             let _ = tx.send(result);
         });
     }
@@ -433,6 +448,13 @@ impl eframe::App for SquadApp {
                         });
                     });
                     ui.separator();
+                    
+                    // ДОДАВ ФІЛЬТР ПО ІМЕНІ
+                    ui.horizontal(|ui| {
+                        ui.label(self.tr("search_name"));
+                        ui.text_edit_singleline(&mut self.filter_name);
+                    });
+
                     ui.horizontal(|ui| {
                         ui.label(self.tr("map"));
                         ui.text_edit_singleline(&mut self.filter_map);
