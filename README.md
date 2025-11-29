@@ -3,7 +3,7 @@
 A high-performance, native desktop server browser for the game **Squad**.  
 Built completely in **Rust** using `egui`.
 
-![Squad Browser Screenshot](https://via.placeholder.com/800x600?text=Screenshot+Coming+Soon)
+![Squad Browser Preview](images/preview.png)
 
 ## ⚡ Features
 
@@ -12,7 +12,7 @@ Built completely in **Rust** using `egui`.
 - **Smart Filtering**:
   - Filter by player count (Min/Max).
   - **Blacklist System**: Hide servers from specific countries (RU, CN, BR, etc.).
-  - Search by Map or Game Mode.
+  - Search by Map or Game Mode.fgg
 - **Localization**: English 🇬🇧 and Ukrainian 🇺🇦 support.
 
 ## 🛠 Installation
@@ -27,8 +27,8 @@ You need **Rust** installed.
 
 ```bash
 # Clone the repository
-git clone [https://github.com/YOUR_USERNAME/squad_browser.git](https://github.com/YOUR_USERNAME/squad_browser.git)
-cd squad_browser
+git clone https://github.com/69-Lukash/squad-browser.git
+cd squad-browser
 
 # Run in debug mode
 cargo run
