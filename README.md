@@ -3,12 +3,7 @@
 A high-performance, native desktop server browser for the game **Squad**.  
 Built completely in **Rust** using `egui`.
 
-<<<<<<< HEAD
 ![Squad Browser Preview](images/preview.png)
-=======
-<img width="654" height="831" alt="squad browser" src="https://github.com/user-attachments/assets/5c151de4-1db0-4df4-91a0-827c433064be" />
-
->>>>>>> ff8aebe (Fix image in README)
 
 ## ⚡ Features
 

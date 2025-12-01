@@ -73,7 +73,7 @@ struct SquadApp {
     min_players: u32,
     max_players: u32,
     banned_countries: HashSet<String>,
-    filter_name: String, // НОВЕ ПОЛЕ
+    filter_name: String,
     filter_map: String,
     filter_mode: String,
     language: Language,
@@ -122,12 +122,15 @@ fn fetch_servers(
     min_p: u32, 
     max_p: u32, 
     banned: HashSet<String>, 
-    f_name: String, // НОВИЙ АРГУМЕНТ
+    f_name: String,
     f_map: String, 
     f_mode: String, 
     override_url: String
 ) -> ScanResult {
     
+    // ЛОГ В КОНСОЛЬ
+    println!("[LOG] Starting fetch request...");
+
     let client = reqwest::blocking::Client::new();
     let mut final_servers = Vec::new();
     let mut next_link = String::new();
@@ -137,90 +140,95 @@ fn fetch_servers(
 
     let is_infinite_scroll = !override_url.is_empty();
     
-    let mut current_url = if is_infinite_scroll {
-        override_url
+    let base_url = "https://api.battlemetrics.com/servers";
+
+    let current_url = if is_infinite_scroll {
+        override_url.clone()
     } else {
-        "https://api.battlemetrics.com/servers?filter[game]=squad&filter[status]=online&page[size]=100&sort=-players".to_string()
+        base_url.to_string()
     };
 
-    let pages_to_fetch = if is_infinite_scroll { 1 } else { 3 };
+    let mut request = client.get(&current_url);
 
-    for _ in 0..pages_to_fetch {
-        let mut request = client.get(&current_url);
-        
-        if !is_infinite_scroll {
-            request = request
-                .query(&[("filter[players][min]", min_p.to_string())])
-                .query(&[("filter[players][max]", max_p.to_string())]);
-        }
-
-        match request.send() {
-            Ok(resp) => {
-                if let Ok(json) = resp.json::<ApiResponse>() {
-                    if let Some(links) = json.links {
-                        if let Some(nxt) = links.next {
-                            next_link = nxt;
-                            current_url = next_link.clone();
-                        } else {
-                            next_link = "".to_string();
-                        }
-                    }
-
-                    for server_data in json.data {
-                        let attr = server_data.attributes;
-                        let country = attr.country.unwrap_or("??".to_string());
-                        let name = attr.name;
-                        let players = attr.players;
-                        let max_players = attr.max_players;
-                        let map = attr.details.map.unwrap_or("Unknown".to_string());
-                        let mode = attr.details.game_mode.unwrap_or("Unknown".to_string());
-                        
-                        let mut skip = false;
-                        if country != "UA" {
-                            if banned.contains(&country) { skip = true; }
-                            
-                            let name_upper = name.to_uppercase();
-                            if banned.contains("RU") {
-                                for w in ban_words_ru { if name_upper.contains(w) { skip = true; break; } }
-                            }
-                            if banned.contains("CN") {
-                                for w in ban_words_cn { if name_upper.contains(w) { skip = true; break; } }
-                            }
-                        }
-                        if skip { continue; }
-
-                        // НОВИЙ ФІЛЬТР
-                        if !f_name.is_empty() && !name.to_lowercase().contains(&f_name.to_lowercase()) { continue; }
-                        
-                        if !f_map.is_empty() && !map.to_lowercase().contains(&f_map.to_lowercase()) { continue; }
-                        if !f_mode.is_empty() && !mode.to_lowercase().contains(&f_mode.to_lowercase()) { continue; }
-
-                        let clean_name = if name.len() > 48 { format!("{}...", &name[..45]) } else { name };
-
-                        final_servers.push(ServerItem {
-                            name: clean_name,
-                            players,
-                            max_players,
-                            map,
-                            mode,
-                            country,
-                        });
-                    }
-                } else {
-                    break;
-                }
-            },
-            Err(_) => break,
-        }
-        
-        if next_link.is_empty() { break; }
+    if !is_infinite_scroll {
+        println!("[LOG] New search initiated. Filters applied.");
+        request = request
+            .query(&[("filter[game]", "squad")])
+            .query(&[("filter[status]", "online")])
+            .query(&[("page[size]", "50")])
+            .query(&[("sort", "-players")])
+            .query(&[("filter[players][min]", min_p.to_string())])
+            .query(&[("filter[players][max]", max_p.to_string())]);
+    } else {
+        println!("[LOG] Loading next page from API...");
     }
+
+    match request.send() {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<ApiResponse>() {
+                if let Some(links) = json.links {
+                    next_link = links.next.unwrap_or_default();
+                }
+
+                for server_data in json.data {
+                    let attr = server_data.attributes;
+                    let country = attr.country.unwrap_or("??".to_string());
+                    let name = attr.name;
+                    let players = attr.players;
+                    let max_players = attr.max_players;
+                    let map = attr.details.map.unwrap_or("Unknown".to_string());
+                    let mode = attr.details.game_mode.unwrap_or("Unknown".to_string());
+                    
+                    let mut skip = false;
+                    if country != "UA" {
+                        if banned.contains(&country) { skip = true; }
+                        let name_upper = name.to_uppercase();
+                        if banned.contains("RU") {
+                            for w in ban_words_ru { if name_upper.contains(w) { skip = true; break; } }
+                        }
+                        if banned.contains("CN") {
+                            for w in ban_words_cn { if name_upper.contains(w) { skip = true; break; } }
+                        }
+                    }
+                    if skip { continue; }
+
+                    if !f_name.is_empty() && !name.to_lowercase().contains(&f_name.to_lowercase()) { continue; }
+                    if !f_map.is_empty() && !map.to_lowercase().contains(&f_map.to_lowercase()) { continue; }
+                    if !f_mode.is_empty() && !mode.to_lowercase().contains(&f_mode.to_lowercase()) { continue; }
+
+                    // --- ФІКС ТУТ (Безпечна обрізка рядка) ---
+                    let clean_name = if name.chars().count() > 48 {
+                        let truncated: String = name.chars().take(45).collect();
+                        format!("{}...", truncated)
+                    } else {
+                        name
+                    };
+
+                    final_servers.push(ServerItem {
+                        name: clean_name,
+                        players,
+                        max_players,
+                        map,
+                        mode,
+                        country,
+                    });
+                }
+            } else {
+                println!("[ERR] Failed to parse JSON");
+            }
+        },
+        Err(e) => println!("[ERR] Network error: {}", e),
+    }
+
+    println!("[LOG] Fetched {} servers. Next URL present: {}", final_servers.len(), !next_link.is_empty());
 
     ScanResult {
         servers: final_servers,
         next_url: next_link,
     }
 }
+
+// --- GUI ---
 
 impl SquadApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -250,8 +258,8 @@ impl SquadApp {
             ("min_p", Language::Ua) => "Мін. Гравців:".to_owned(),
             ("max_p", Language::En) => "Max Players:".to_owned(),
             ("max_p", Language::Ua) => "Макс. Гравців:".to_owned(),
-            ("search_name", Language::En) => "Server Name:".to_owned(), // НОВЕ
-            ("search_name", Language::Ua) => "Назва Сервера:".to_owned(), // НОВЕ
+            ("search_name", Language::En) => "Server Name:".to_owned(),
+            ("search_name", Language::Ua) => "Назва Сервера:".to_owned(),
             ("map", Language::En) => "Map Name:".to_owned(),
             ("map", Language::Ua) => "Назва Карти:".to_owned(),
             ("mode", Language::En) => "Game Mode:".to_owned(),
@@ -287,7 +295,7 @@ impl SquadApp {
         let min_p = self.min_players;
         let max_p = self.max_players;
         let banned = self.banned_countries.clone();
-        let f_name = self.filter_name.clone(); // ПЕРЕДАЄМО
+        let f_name = self.filter_name.clone();
         let f_map = self.filter_map.clone();
         let f_mode = self.filter_mode.clone();
         let url_arg = next_page_url.unwrap_or_default();
@@ -366,7 +374,7 @@ impl eframe::App for SquadApp {
                 let total_servers = self.servers.len();
 
                 for (index, server) in self.servers.iter().enumerate() {
-                    ui.group(|ui| {
+                    let response = ui.group(|ui| {
                         ui.horizontal(|ui| {
                             ui.colored_label(egui::Color32::from_rgb(255, 165, 0), format!("[{}]", server.country));
                             ui.colored_label(egui::Color32::LIGHT_BLUE, &server.name);
@@ -380,9 +388,11 @@ impl eframe::App for SquadApp {
                         });
                     });
 
-                    if index >= total_servers.saturating_sub(5) 
+                    // --- ЛОГІКА INFINITE SCROLL ---
+                    if index >= total_servers.saturating_sub(3) 
                        && !self.is_loading 
                        && !self.next_url.is_empty() 
+                       && ui.is_rect_visible(response.response.rect)
                     {
                         trigger_load_more_url = Some(self.next_url.clone());
                     }
@@ -449,7 +459,6 @@ impl eframe::App for SquadApp {
                     });
                     ui.separator();
                     
-                    // ДОДАВ ФІЛЬТР ПО ІМЕНІ
                     ui.horizontal(|ui| {
                         ui.label(self.tr("search_name"));
                         ui.text_edit_singleline(&mut self.filter_name);
